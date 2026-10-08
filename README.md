@@ -91,8 +91,6 @@ CI 见 [`.github/workflows/build.yml`](.github/workflows/build.yml)（每次 pus
 
 ## 已知限制
 
-> 这一节是**故意写清楚**的，包括我的实测范围。
-
 1. **多平台靠"规则表 + 数值合理性校验"，不是驱动级枚举**。已覆盖：
    - Intel CPU 温度：`CPU Package`（Enhanced / DTS 组）、逐核 `P-core N` / `E-core N`
    - AMD CPU 温度：`CPU (Tctl/Tdie)`、`CPU (Tctl)`、`CPU (Tdie)`、`CPU Die (average)`
