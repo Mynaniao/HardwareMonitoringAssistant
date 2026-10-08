@@ -40,7 +40,7 @@
 | 管理员权限 | 读取传感器与 ETW 帧率需要，**每次启动会弹一次 UAC**（见下方「已知限制」） |
 | HWiNFO | 温度数据来自 HWiNFO 的共享内存。**本仓库不附带 HWiNFO**（第三方软件不允许再分发）。<br>💡 **程序会帮你搞定**：启动时若没找到 HWiNFO，会**先尝试自动下载**；如果被网络挡住，会弹窗引导你 → `【是】打开官网下载页` → 下载完选中那个 zip → 程序**自动解压装好**并写好共享内存配置，全程不用手动解压 |
 | PresentMon（可选） | 帧率显示需要它。它是 Intel 的开源工具（MIT 许可），可自行从 [PresentMon 仓库](https://github.com/GameTechDev/PresentMon) 获取，放到程序目录下；**Releases 里的便携包已附带** |
-| NVIDIA 驱动 | 只有显存容量读数依赖 `nvidia-smi`，所以**目前显存行仅支持 NVIDIA 显卡**（见 Roadmap） |
+| 显卡驱动 | 温度/占用走 HWiNFO，**NVIDIA / AMD / Intel 都能读**；显存读数 NVIDIA 走 `nvidia-smi`，其它厂牌走 HWiNFO + 注册表（见「已知限制」） |
 
 ## 使用
 
@@ -86,16 +86,24 @@ CI 见 [`.github/workflows/build.yml`](.github/workflows/build.yml)（每次 pus
 |---|---|
 | CPU / GPU / 硬盘**温度** | HWiNFO64 共享内存（`Global\HWiNFO_SENS_SM2`） |
 | CPU / 内存 / 硬盘**使用率**、读写速度 | Windows 性能计数器（PDH） |
-| 显存已用 / 总量 | `nvidia-smi` |
+| 显存已用 / 总量 | NVIDIA 走 `nvidia-smi`；其它厂牌用 HWiNFO 的显存读数 + 注册表里的显存总量 |
 | 帧率 | PresentMon（ETW 事件跟踪） |
 
 ## 已知限制
 
-> 这一节是**故意写清楚**的：当前版本是在一台 Intel 机器上开发调校的，下面这些情况会出现数据不准或显示 `NaN`。
+> 这一节是**故意写清楚**的，包括我的实测范围。
 
-1. **传感器按名字匹配，目前只覆盖 Intel 平台**：CPU 温度读的是 HWiNFO 里标签为 `CPU Package`、且分组名含 `Enhanced` 的传感器；CPU 占用读的是分组名含 `Core Ultra` 的 `Total CPU Usage`。
-   → 在 **AMD** 或其它 Intel 平台上，CPU 这两行会显示 `NaN%` / `NaN°C`（其它行正常）。
-2. **显存只支持 NVIDIA**（走 `nvidia-smi`）→ AMD / Intel 显卡显存行空白。
+1. **多平台靠"规则表 + 数值合理性校验"，不是驱动级枚举**。已覆盖：
+   - Intel CPU 温度：`CPU Package`（Enhanced / DTS 组）、逐核 `P-core N` / `E-core N`
+   - AMD CPU 温度：`CPU (Tctl/Tdie)`、`CPU (Tctl)`、`CPU (Tdie)`、`CPU Die (average)`
+   - CPU 占用：`Total CPU Usage`（Intel/AMD 通用），取不到时回退 Windows 性能计数器
+   - NVIDIA：`GPU Core Load`、`GPU Temperature`；Intel/AMD 核显：`GPU Core Temperature`、`GPU Total Usage`
+   ⚠️ **开发机是 Intel 平台**，AMD 那几条是按 HWiNFO 的通用标签写的、**未在 AMD 真机验证** —— 读数不对请提 issue
+   并附上你机器上 HWiNFO 里相关传感器的名字，加进规则表就能支持。
+2. **独显休眠时 GPU 行回退到核显**（笔记本很常见）：休眠的独显在 HWiNFO 里标签为空、值为 0，直接显示就是假 0。
+   开始玩游戏后独显醒来，会自动切回独显读数。
+3. **显存**：NVIDIA 走 `nvidia-smi`；其它厂牌用 HWiNFO 的显存读数 + 注册表里的显存总量。
+   取不到就显示 `--`（**不会**再出现 `NaN`）。
 3. **启动时会强制结束已有的 HWiNFO64 进程再重新拉起** → 如果你自己开着 HWiNFO 做别的事，会被它关掉。
 4. **退出程序不会关闭 HWiNFO**（下次启动时会重新拉起，所以不会堆积）。
 5. **必须管理员权限**：每次启动弹 UAC；开机自启也会弹（见上文的任务计划程序方案）。
@@ -106,11 +114,12 @@ CI 见 [`.github/workflows/build.yml`](.github/workflows/build.yml)（每次 pus
 ## 已完成
 
 - [x] **自动获取 HWiNFO**：启动时若缺失，先尝试自动下载官方便携包；失败则引导用户下载并**自动解压安装**（含内置共享内存配置）
+- [x] **多平台传感器适配**（v1.2.0）：规则表 + 数值合理性校验，覆盖 Intel / AMD CPU 与 NVIDIA / Intel / AMD 核显，独显休眠自动回退核显
+- [x] **多厂牌显存**（v1.2.0）：NVIDIA 走 `nvidia-smi`，其它厂牌走 HWiNFO 读数 + 注册表显存总量；**任何读数取不到都显示 `--` 而不是 `NaN`**
 
 ## Roadmap
 
-- [ ] **多平台传感器适配**：把"按名字精确匹配"改成"多候选 + 模糊匹配 + 单位校验"，覆盖 AMD（`CPU (Tctl/Tdie)`）与各代 Intel
-- [ ] **多厂牌显卡**：显存/温度不再依赖 `nvidia-smi`，AMD / Intel 平台也能读
+- [ ] **在 AMD / 真机验证规则表**（当前 AMD 分支为按通用标签预置，未真机验证）
 - [ ] **不强杀 HWiNFO**：检测到已在运行且共享内存可用时直接复用
 - [ ] **退出时清理**自己拉起的 HWiNFO
 - [ ] 可选：不依赖 HWiNFO 的传感器后端

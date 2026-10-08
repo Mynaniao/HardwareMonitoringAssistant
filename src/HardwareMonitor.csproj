@@ -11,7 +11,7 @@
     <AssemblyName>HardwareMonitor</AssemblyName>
     <RootNamespace>HardwareMonitor</RootNamespace>
     <LangVersion>latest</LangVersion>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationManifest>app.manifest</ApplicationManifest>

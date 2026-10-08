@@ -209,6 +209,20 @@ public class HardwareMonitor : Form
         this.Location = new Point(x, y);
     }
 
+    // CPU 占用兜底：Windows 性能计数器（任何厂牌都能用）
+    PerformanceCounter cpuPdh;
+    double CpuUsageFromPdh()
+    {
+        try
+        {
+            if (cpuPdh == null) cpuPdh = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+            cpuPdh.NextValue();
+            System.Threading.Thread.Sleep(60);
+            return cpuPdh.NextValue();
+        }
+        catch { return double.NaN; }
+    }
+
     void UpdateStats()
     {
         try
@@ -216,10 +230,13 @@ public class HardwareMonitor : Form
             // HWiNFO 数据源
             HwInfoData hw = HwInfoData.Read();
 
-            double cpuUse = hw.Value("CPU", "Total CPU Usage", "Core Ultra");
-            double cpuTemp = hw.Value("Enhanced", "CPU Package", "Enhanced");
-            lblCpuPct.Text = string.Format("{0,3:F0}%", cpuUse);
-            lblCpuTemp.Text = string.Format("{0:F0}°C", cpuTemp);
+            // 多平台匹配（Intel / AMD 的标签差异由 HwInfoMatch 统一处理）
+            var rd = hw.Readings();
+            double cpuUse = HwMatch.CpuUsage(rd);
+            if (double.IsNaN(cpuUse)) cpuUse = CpuUsageFromPdh();      // 兜底：性能计数器
+            double cpuTemp = HwMatch.CpuTemp(rd);
+            lblCpuPct.Text = HwMatch.Fmt(cpuUse, "F0", "%").PadLeft(4);
+            lblCpuTemp.Text = HwMatch.Fmt(cpuTemp, "F0", "°C");
 
             // 内存（系统API，准确）
             var ci = new Microsoft.VisualBasic.Devices.ComputerInfo();
@@ -231,17 +248,17 @@ public class HardwareMonitor : Form
             lblRamGb.Text = string.Format("{0}/{1}GB", usedGB, totalGB);
 
             // GPU（HWiNFO 温度/占用，nvidia-smi 显存GB）
-            double gpuUse = hw.Value("dGPU", "GPU Core Load", "dGPU");
-            double gpuTemp = hw.Value("dGPU", "GPU Temperature", "dGPU");
-            lblGpuPct.Text = string.Format("{0,3:F0}%", gpuUse);
-            lblGpuTemp.Text = string.Format("{0:F0}°C", gpuTemp);
-            lblGpuGb.Text = GetGpuMemGb();
+            double gpuUse = HwMatch.GpuUsage(rd);
+            double gpuTemp = HwMatch.GpuTemp(rd);
+            lblGpuPct.Text = HwMatch.Fmt(gpuUse, "F0", "%").PadLeft(4);
+            lblGpuTemp.Text = HwMatch.Fmt(gpuTemp, "F0", "°C");
+            lblGpuGb.Text = GetGpuMemGb(rd);
 
             // 硬盘
-            double diskAct = hw.MaxValue("Drive:", "Total Activity");
-            double diskTemp = hw.MaxSmartTemp();
-            lblDiskPct.Text = string.Format("{0,3:F0}%", diskAct);
-            lblDiskTemp.Text = string.Format("{0:F0}°C", diskTemp);
+            double diskAct = HwMatch.DiskActivity(rd);
+            double diskTemp = HwMatch.DiskTemp(rd);
+            lblDiskPct.Text = HwMatch.Fmt(diskAct, "F0", "%").PadLeft(4);
+            lblDiskTemp.Text = HwMatch.Fmt(diskTemp, "F0", "°C");
             lblDiskGb.Text = GetTotalDiskUsage();
 
             var io = GetDiskSpeed();
@@ -254,7 +271,8 @@ public class HardwareMonitor : Form
 
     const double GB = 1024.0 * 1024 * 1024;
 
-    string GetGpuMemGb()
+    /// <summary>显存已用 / 总量（GB）：① nvidia-smi ② HWiNFO 的显存读数 ③ 注册表总量 × 占用率。</summary>
+    string GetGpuMemGb(System.Collections.Generic.List<HwReading> rd)
     {
         try
         {
@@ -276,7 +294,54 @@ public class HardwareMonitor : Form
             }
         }
         catch { }
+
+        // ② 非 NVIDIA（或 nvidia-smi 不可用）：总量取注册表，已用取 HWiNFO 的 MB 读数
+        try
+        {
+            double totalGb = VramTotalGb();
+            double usedMb = HwMatch.VramUsedMb(rd);
+            if (double.IsNaN(usedMb))
+            {
+                double pct = HwMatch.VramUsagePct(rd);
+                if (!double.IsNaN(pct) && totalGb > 0) usedMb = pct / 100.0 * totalGb * 1024.0;
+            }
+            if (totalGb > 0 && !double.IsNaN(usedMb))
+                return (usedMb / 1024.0).ToString("0.#") + "/" + totalGb.ToString("0.#") + "GB";
+        }
+        catch { }
         return "";
+    }
+
+    /// <summary>显存总量（GB）：从显示适配器的注册表项读 qwMemorySize，取最大的那个（即独显）。</summary>
+    static double VramTotalGb()
+    {
+        try
+        {
+            long best = 0;
+            using (var baseKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"))
+            {
+                if (baseKey == null) return 0;
+                foreach (string sub in baseKey.GetSubKeyNames())
+                {
+                    using (var k = baseKey.OpenSubKey(sub))
+                    {
+                        if (k == null) continue;
+                        object o = k.GetValue("HardwareInformation.qwMemorySize");
+                        byte[] b = o as byte[];
+                        if (b != null && b.Length >= 8)
+                        {
+                            long v = BitConverter.ToInt64(b, 0);
+                            if (v > best) best = v;
+                        }
+                        else if (o is long && (long)o > best) best = (long)o;
+                        else if (o is int && (int)o > best) best = (int)o;
+                    }
+                }
+            }
+            return best > 0 ? best / (1024.0 * 1024 * 1024) : 0;
+        }
+        catch { return 0; }
     }
 
     string GetTotalDiskUsage()
@@ -697,33 +762,21 @@ class HwInfoData
         return d;
     }
 
-    // 取匹配 sensor关键字 且 label精确 的第一个值；sensorMustContain 用于区分CPU主区
-    public double Value(string sensorKey, string labelExact, string sensorMust)
+    /// <summary>转成多平台匹配用的读数列表（HwInfoMatch 用）。</summary>
+    public System.Collections.Generic.List<HwReading> Readings()
     {
+        var res = new System.Collections.Generic.List<HwReading>(list.Count);
         foreach (var r in list)
-            if (r.sensor.Contains(sensorMust) && r.label.Trim() == labelExact)
-                return r.value;
-        return double.NaN;
+        {
+            var x = new HwReading();
+            x.Sensor = r.sensor;
+            x.Label = (r.label ?? "").Trim();
+            x.Value = r.value;
+            res.Add(x);
+        }
+        return res;
     }
 
-    public double MaxValue(string sensorKey, string labelExact)
-    {
-        double max = 0;
-        foreach (var r in list)
-            if (r.sensor.Contains(sensorKey) && r.label.Trim() == labelExact && r.value > max)
-                max = r.value;
-        return max;
-    }
-
-    // 所有物理盘 Drive Temperature 的最大值
-    public double MaxSmartTemp()
-    {
-        double max = 0;
-        foreach (var r in list)
-            if (r.sensor.Contains("S.M.A.R.T") && r.label.Trim() == "Drive Temperature" && r.value > max)
-                max = r.value;
-        return max;
-    }
 
     static string AStr(byte[] buf, int off, int n)
     {

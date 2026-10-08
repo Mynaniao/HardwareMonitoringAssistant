@@ -28,6 +28,7 @@ $args = @(
   '/r:System.IO.Compression.dll'
   '/r:System.IO.Compression.FileSystem.dll'
   '/r:Microsoft.VisualBasic.dll'
+  (Join-Path $root 'src\HwInfoMatch.cs')
   (Join-Path $root 'src\HardwareMonitor.cs')
 )
 
