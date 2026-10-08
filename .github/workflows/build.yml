@@ -1,0 +1,28 @@
+# 每次 push / PR 都用 Windows 自带的 csc.exe 编译一遍，确保别人 clone 下来能编译成功
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 用内置 csc.exe 编译
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: 显示产物
+        shell: pwsh
+        run: Get-Item dist/HardwareMonitor.exe | Select-Object Name, Length, LastWriteTime
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: HardwareMonitor-x64
+          path: dist/HardwareMonitor.exe
+          if-no-files-found: error

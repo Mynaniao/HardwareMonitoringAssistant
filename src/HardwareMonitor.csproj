@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    硬件监控浮窗 —— 仅用于 Visual Studio / MSBuild 的可选工程文件。
+    日常编译请直接跑 build.ps1 / build.cmd（用 Windows 自带的 csc.exe，无需 SDK）。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>HardwareMonitor</AssemblyName>
+    <RootNamespace>HardwareMonitor</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>硬件监控浮窗</AssemblyTitle>
+    <Product>Hardware Monitor</Product>
+    <Copyright>Copyright (c) 2026 Mynaniao</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.VisualBasic" />
+  </ItemGroup>
+
+</Project>

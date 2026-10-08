@@ -1,0 +1,20 @@
+# 编译产物
+dist/
+bin/
+obj/
+
+# 第三方程序：HWiNFO 不允许再分发，请不要提交它
+HWiNFO/
+HWiNFO64.exe
+PresentMon.exe
+
+# 运行时产生的日志
+*.log
+hwinfo_launch.log
+
+# 编辑器 / 系统
+.vs/
+.idea/
+*.user
+Thumbs.db
+.DS_Store
