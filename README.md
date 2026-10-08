@@ -38,7 +38,7 @@
 |---|---|
 | Windows 10 64 位 / Windows 11 | 需要 .NET Framework 4.8 —— **Win10 1903+ 与 Win11 已内置**，不用另外安装 ✓ |
 | 管理员权限 | 读取传感器与 ETW 帧率需要，**每次启动会弹一次 UAC**（见下方「已知限制」） |
-| HWiNFO（需自行下载） | 温度数据来自 HWiNFO 的共享内存。**本仓库不附带 HWiNFO**（第三方软件不允许再分发），请到 [hwinfo.com](https://www.hwinfo.com/download/) 下载便携版（Portable），解压后把 `HWiNFO64.exe` 放进程序目录的 `HWiNFO\` 子目录 |
+| HWiNFO | 温度数据来自 HWiNFO 的共享内存。**本仓库不附带 HWiNFO**（第三方软件不允许再分发）。<br>💡 **程序会帮你搞定**：启动时若没找到 HWiNFO，会**先尝试自动下载**；如果被网络挡住，会弹窗引导你 → `【是】打开官网下载页` → 下载完选中那个 zip → 程序**自动解压装好**并写好共享内存配置，全程不用手动解压 |
 | PresentMon（可选） | 帧率显示需要它。它是 Intel 的开源工具（MIT 许可），可自行从 [PresentMon 仓库](https://github.com/GameTechDev/PresentMon) 获取，放到程序目录下；**Releases 里的便携包已附带** |
 | NVIDIA 驱动 | 只有显存容量读数依赖 `nvidia-smi`，所以**目前显存行仅支持 NVIDIA 显卡**（见 Roadmap） |
 
@@ -53,9 +53,11 @@
     └── HWiNFO64.INI    （仓库提供，已预设共享内存模式）
 ```
 
-1. 把 `HWiNFO64.INI` 放进 `HWiNFO\` 目录（仓库的 `assets/` 或便携包里带）
-2. 双击 `硬件监控.exe`，允许 UAC
-3. 程序会自动拉起 HWiNFO64 与 PresentMon，浮窗出现在右上角，拖动即可移动
+1. 双击 `硬件监控.exe`，允许 UAC
+2. 如果缺 HWiNFO，程序会引导你获取（自动下载 / 选中已下载的 zip，它会自动解压并写好配置）
+3. 之后程序自动拉起 HWiNFO64 与 PresentMon，浮窗出现在右上角，拖动即可移动
+
+> 便携包里已经带好了 `HWiNFO\HWiNFO64.INI`；就算你后来换了自己下载的 HWiNFO，程序也会在缺失时自动补上这份配置。
 
 **开机自启（可选）**：把 `硬件监控.exe` 的快捷方式放进 `Win+R` → `shell:startup`。
 ⚠️ 因为需要管理员权限，自启时**会弹一次 UAC**；想完全免提示，可用「任务计划程序」创建一个"使用最高权限运行"的登录时任务。
@@ -100,6 +102,10 @@ CI 见 [`.github/workflows/build.yml`](.github/workflows/build.yml)（每次 pus
 6. **未签名**：首次运行可能有 SmartScreen「未知发布者」提示，选"仍要运行"即可。
 7. **HWiNFO 免费版的共享内存有时限**（社区反馈约 12 小时）→ 长时间挂机后温度可能停止更新；重启程序可恢复。购买 HWiNFO Pro 可解除该限制。
 8. **FPS 只在全屏独占游戏 / DirectX / Vulkan 程序里有数**，桌面与窗口化应用显示 `--`。
+
+## 已完成
+
+- [x] **自动获取 HWiNFO**：启动时若缺失，先尝试自动下载官方便携包；失败则引导用户下载并**自动解压安装**（含内置共享内存配置）
 
 ## Roadmap
 

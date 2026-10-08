@@ -6,6 +6,8 @@ using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.IO.Compression;
+using System.Net;
 using System.Windows.Forms;
 
 public class HardwareMonitor : Form
@@ -442,9 +444,171 @@ public class HardwareMonitor : Form
     [STAThread]
     public static void Main()
     {
+        if (!EnsureHwInfoReady())
+        {
+            if (MessageBox.Show(
+                    "没有 HWiNFO 就取不到温度（CPU / GPU / 硬盘温度会为空）。\r\n\r\n仍要继续运行吗？",
+                    "硬件监控", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+        }
+
         EnsureHwInfo();
         Application.EnableVisualStyles();
         Application.Run(new HardwareMonitor());
+    }
+
+    // ===== 没有 HWiNFO 时：尝试自动获取 =====
+
+    /// <summary>共享内存模式的 HWiNFO 配置模板（用户拿到的 HWiNFO 没有 INI 时靠它工作）。</summary>
+    static readonly string[] HWINFO_INI_LINES = new string[]
+    {
+        "[Settings]",
+        "SensorsOnly=1",
+        "Autorun=1",
+        "OpenSystemSummary=0",
+        "ShowWelcomeAndProgress=0",
+        "MinimalizeMainWnd=1",
+        "MinimalizeSensors=1",
+        "MinimalizeSensorsClose=1",
+        "SensorsSM=1",
+        "OpenSensors=1",
+        "SMMemSize=2097152",
+        "AutoUpdate=0",
+        "StartMinimized=1",
+        "NoInfo=1",
+        "AutoStart=1",
+        "MinMainOnStart=1",
+        "Theme=3",
+        "SensorsFontFace=Segoe UI",
+        "SensorsFontHeight=16",
+    };
+
+    static void EnsureHwInfoIni(string hwDir)
+    {
+        try
+        {
+            Directory.CreateDirectory(hwDir);
+            string ini = Path.Combine(hwDir, "HWiNFO64.INI");
+            if (!File.Exists(ini))
+                File.WriteAllLines(ini, HWINFO_INI_LINES, Encoding.ASCII);
+        }
+        catch { }
+    }
+
+    /// <summary>HWiNFO64.exe 是否已就位；没有就尝试下载或引导用户提供。</summary>
+    static bool EnsureHwInfoReady()
+    {
+        string appDir = Path.GetDirectoryName(Application.ExecutablePath);
+        string hwDir = Path.Combine(appDir, "HWiNFO");
+        string exe = Path.Combine(hwDir, "HWiNFO64.exe");
+        EnsureHwInfoIni(hwDir);
+        if (File.Exists(exe)) return true;
+
+        // ① 先试直接下载（有些网络能过官方 CDN；被挡就走 ②）
+        if (TryDownloadHwInfo(hwDir, exe)) return true;
+
+        // ② 引导用户：打开下载页 → 选文件 → 自动解压安装
+        var r = MessageBox.Show(
+            "缺少 HWiNFO64.exe —— 它是免费的硬件传感器工具，温度数据要靠它。\r\n\r\n" +
+            "点【是】：打开官网下载页（下 Portable 便携版），下载完回来选文件\r\n" +
+            "点【否】：直接选择我已经下载好的文件（.zip 或 HWiNFO64.exe）\r\n" +
+            "点【取消】：这次不装（其它数据照常显示，温度为空）",
+            "硬件监控 —— 需要 HWiNFO", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information);
+
+        if (r == DialogResult.Cancel) return false;
+
+        if (r == DialogResult.Yes)
+        {
+            try { Process.Start("https://www.hwinfo.com/download/"); } catch { }
+            if (MessageBox.Show(
+                    "下载完成后点【确定】，然后选中下载到的文件（zip 或 HWiNFO64.exe），程序会自动装好。",
+                    "硬件监控", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
+                return false;
+        }
+
+        using (var dlg = new OpenFileDialog())
+        {
+            dlg.Title = "选择已下载的 HWiNFO（.zip 或 HWiNFO64.exe）";
+            dlg.Filter = "HWiNFO 压缩包或程序 (*.zip;*.exe)|*.zip;*.exe|所有文件 (*.*)|*.*";
+            if (dlg.ShowDialog() != DialogResult.OK) return false;
+            return InstallHwInfoFrom(dlg.FileName, hwDir, exe);
+        }
+    }
+
+    /// <summary>从 zip 或单个 exe 安装到 hwDir。</summary>
+    static bool InstallHwInfoFrom(string file, string hwDir, string exe)
+    {
+        try
+        {
+            Directory.CreateDirectory(hwDir);
+            if (file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                using (var zip = ZipFile.OpenRead(file))
+                {
+                    bool got = false;
+                    foreach (var e in zip.Entries)
+                    {
+                        if (e.Name.Equals("HWiNFO64.exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            e.ExtractToFile(exe, true);
+                            got = true;
+                        }
+                        else if (e.Name.Equals("HWiNFO64.INI", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string dst = Path.Combine(hwDir, "HWiNFO64.INI");
+                            if (!File.Exists(dst)) e.ExtractToFile(dst, true);
+                        }
+                    }
+                    if (!got)
+                    {
+                        MessageBox.Show("这个压缩包里没找到 HWiNFO64.exe，请确认下载的是 HWiNFO 的 Portable 版。",
+                            "硬件监控", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                File.Copy(file, exe, true);
+            }
+            EnsureHwInfoIni(hwDir);
+            return File.Exists(exe);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("安装 HWiNFO 失败：" + ex.Message, "硬件监控", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+    }
+
+    /// <summary>尝试直接下载官方便携包（失败返回 false，不抛异常）。</summary>
+    static bool TryDownloadHwInfo(string hwDir, string exe)
+    {
+        try { ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; }
+        catch { }
+        string[] urls = new string[]
+        {
+            "https://www.hwinfo.com/files/hwi_854.zip",
+        };
+        foreach (var u in urls)
+        {
+            try
+            {
+                string tmp = Path.Combine(Path.GetTempPath(), "hwinfo-auto.zip");
+                using (var wc = new WebClient())
+                {
+                    wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                    wc.DownloadFile(u, tmp);
+                }
+                if (InstallHwInfoFrom(tmp, hwDir, exe))
+                {
+                    try { File.Delete(tmp); } catch { }
+                    return true;
+                }
+            }
+            catch { }
+        }
+        return false;
     }
 
     static void EnsureHwInfo()
@@ -459,7 +623,9 @@ public class HardwareMonitor : Form
             }
             System.Threading.Thread.Sleep(2000);
 
-            string exe = Path.Combine(appDir, "HWiNFO", "HWiNFO64.exe");
+            string hwDir = Path.Combine(appDir, "HWiNFO");
+            EnsureHwInfoIni(hwDir);
+            string exe = Path.Combine(hwDir, "HWiNFO64.exe");
             if (File.Exists(exe))
             {
                 System.Diagnostics.Process.Start("cmd.exe",

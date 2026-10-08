@@ -18,12 +18,15 @@ $args = @(
   '/target:winexe'
   '/platform:anycpu'
   '/optimize+'
+  '/codepage:65001'
   "/out:$out"
   "/win32manifest:$(Join-Path $root 'src\app.manifest')"
   '/r:System.dll'
   '/r:System.Core.dll'
   '/r:System.Drawing.dll'
   '/r:System.Windows.Forms.dll'
+  '/r:System.IO.Compression.dll'
+  '/r:System.IO.Compression.FileSystem.dll'
   '/r:Microsoft.VisualBasic.dll'
   (Join-Path $root 'src\HardwareMonitor.cs')
 )
