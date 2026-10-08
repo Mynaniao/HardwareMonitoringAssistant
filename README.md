@@ -4,9 +4,17 @@
 >
 > 免安装 · 单文件 exe · 原生 WinForms · 仅占用 < 1% CPU
 
-<!-- 截图：把 PNG 放到 docs/screenshot.png 后，删掉下面这行的注释标记
-![截图](docs/screenshot.png)
--->
+![硬件监控浮窗](docs/screenshot-crop.png)
+
+> 实测：CPU **21% / 62°C** ｜ RAM **94%**（14.6/15.4 GB）｜ GPU **16% / 49°C**（显存 7/12 GB）｜
+> 硬盘 **12% / 40°C**（586/1401 GB，读写 2.86 GB/s）｜ 游戏帧率 **427 FPS**
+
+<details>
+<summary>看它在桌面上的样子（原图）</summary>
+
+![在桌面右下角的样子](docs/screenshot.png)
+
+</details>
 
 ## 功能
 
